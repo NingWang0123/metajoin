@@ -1,0 +1,15 @@
+# Core (selector + MNN Join engine + signal routing) — CPU only
+numpy
+pandas
+scipy
+scikit-learn
+
+# Embeddings (MiniLM via sentence-transformers). The selector's local-embedding
+# tier and MetaJoin's embedding tool degrade gracefully if these are absent, but
+# install them to enable the embedding paths.
+sentence-transformers
+torch
+
+# Optional — only for MetaJoin's LLM controller / LLM verifier mode
+# (off by default; enable with METAJOIN_LLM=1 + an OpenAI-compatible endpoint).
+openai
