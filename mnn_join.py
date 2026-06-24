@@ -5928,17 +5928,28 @@ def perform_join_lcs(
     include_lcs_percentage=False
 ):
     """
-    Performs a join between df_a and df_b based on the Longest Common Subsequence (LCS) distances.
-    
+    Greedy one-to-one assignment join: pair rows of df_a with rows of df_b in
+    order of decreasing pairwise similarity, keeping each pair whose similarity
+    is >= ``threshold`` and never reusing a row on either side.
+
+    NOTE: despite the historical name, this does NOT recompute an LCS/ALCS
+    metric. It operates on whatever similarity matrix it is handed. In MNN Join
+    that is the SAME idfcos similarity (IDF-weighted binary char-n-gram cosine)
+    used to score the transform chain during search, so chain selection and the
+    committed join share one metric; ``threshold`` is the label-free cut chosen
+    upstream by the covmnn rule.
+
     Parameters:
-    - df_a (pd.DataFrame): The left DataFrame.
-    - df_b (pd.DataFrame): The right DataFrame.
-    - lcs_matrix (np.ndarray): A 2D NumPy array where lcs_matrix[i][j] represents the LCS distance between df_a.iloc[i] and df_b.iloc[j].
-    - threshold (int, optional): The minimum allowable LCS similarity for a match. Defaults to 0.
-    - include_lcs_percentage (bool, optional): Whether to include the LCS similarity in the resulting DataFrame. Defaults to False.
-    
+    - df_a (pd.DataFrame): The left (source) DataFrame.
+    - df_b (pd.DataFrame): The right (target) DataFrame.
+    - lcs_matrix (np.ndarray): A 2D similarity matrix where lcs_matrix[i][j] is
+      the (idfcos) similarity between df_a.iloc[i] and df_b.iloc[j]. Name kept
+      for backward compatibility with call sites.
+    - threshold (float, optional): Minimum similarity for a match. Defaults to 0.6.
+    - include_lcs_percentage (bool, optional): Append the similarity as a column.
+
     Returns:
-    - pd.DataFrame: A DataFrame containing the joined rows from df_a and df_b based on the LCS criteria.
+    - pd.DataFrame: The joined rows, one-to-one, greedy by descending similarity.
     """
     
     # Validate input dimensions
@@ -8044,8 +8055,8 @@ pairs = {}
 # deduplicated set of matched (source_value, target_value) pairs. No benchmark
 # scaffolding, no ground-truth scoring, no file I/O, no absolute paths. The
 # MNN-Join out-of-the-box defaults (idfcos + cov_mnn coverage selection + no
-# learned models + safe concat + greedy) are applied via os.environ.setdefault
-# at the TOP of this module, so simply importing it yields MNN-Join behaviour.
+# learned models + safe concat + greedy) are fixed as module constants at the
+# TOP of this module, so simply importing it yields MNN-Join behaviour.
 # ===========================================================================
 from typing import List as _List, Sequence as _Sequence, Tuple as _Tuple
 import contextlib as _contextlib
