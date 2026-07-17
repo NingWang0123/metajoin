@@ -158,7 +158,7 @@ MAX_N=1500   # refuse MNN Join's slow transform search above this table size
 SELECTIVE=bool(os.environ.get('AGENT_SELECTIVE'))       # AGENT_SELECTIVE=1: gate the force-all backstop -> genuine
 #   signal-driven feedback-loop tool selection (controller's tool choices + early-finish actually stick; only the prior-
 #   recommended tool is run as a fallback if the controller ran nothing). Default (unset) = original run-all-and-fuse agent.
-_VERIFY_ACCEPT=os.environ.get('AGENT_VERIFY_ACCEPT','1')!='0'   # QUALITY GATE: sample-verify a tool's joined pairs before committing; reject+escalate if low correct-rate
+_VERIFY_ACCEPT=os.environ.get('AGENT_VERIFY_ACCEPT','0')!='0'   # acceptance gate: OFF by default -- the published system commits the routed specialist's output directly and repairs post-commit (measured +-0.001 on transforms, negative on entity, 3x controller calls; set '1' to restore the legacy gate)
 _VK=int(os.environ.get('VERIFY_K','6'))                 # how many joined pairs to sample-verify on accept
 _VACC_TAU=float(os.environ.get('VERIFY_ACCEPT_TAU','0.5'))   # min fraction of sampled pairs that must verify correct to commit
 _MEM_PATH=os.environ.get('AGENT_MEM_PATH','out_put_csv/agent_tool_memory.csv')   # online memory: (signals, tool, verified_quality) -> augments prior tool-picking
@@ -1109,6 +1109,41 @@ def react(name, art, budget):
                     trace.append(('(backfill uncovered rows)','backfill',f'+{len(_bf)} pairs from {_src}, judged {_ok}/{len(_samp)}; coverage_acc={coverage(accepted,sv):.2f}'))
                 else:
                     trace.append(('(backfill rejected by judge)','backfill',f'{_src}: {_ok}/{len(_samp)} -> not committed'))
+    # === ENTITY-SIDE REPAIR (paper: reciprocity escalation + over-merge veto; ON by default) ===
+    # Fires only on entity-identified tasks: card_skew = row-count cardinality imbalance. A
+    # transform is a function -> ~1-to-1 -> skew~1 -> the whole block is skipped and transform
+    # results are byte-identical. Entity relates a large pool to a small one -> skew >= EM_GATE.
+    if os.environ.get('EM_FIX','1')=='1' and max(len(s),len(t))/max(1,min(len(s),len(t)))>=float(os.environ.get('EM_GATE','3.0')):
+        from collections import Counter as _Cf
+        def _recipcov(_P):                                 # reciprocity coverage: sources in a mutual 1-to-1 pair / |sv|
+            if not _P: return 0.0
+            _td=_Cf(b for _,b in _P); _sd=_Cf(a for a,_ in _P)
+            return len({a for a,b in _P if _td[b]==1 and _sd[a]==1})/max(1,len(sv))
+        # (a) reciprocity escalation: a committed set whose reciprocity coverage trails its raw
+        #     coverage is over-merged -> probe the entity matcher and commit it iff it STRICTLY
+        #     raises reciprocity coverage. On a clean ~bijective transform the two quantities are
+        #     equal, so the probe never fires (do-no-harm by construction).
+        _crc0=_recipcov(accepted); _cc0=coverage(accepted,sv)
+        if _jelly() is not None and 'run_jellyfish' not in ran and _crc0<_cc0:
+            try: _jp=tool_jellyfish(sv,tv)
+            except Exception: _jp=set()
+            _jrc=_recipcov(_jp)
+            if _jrc>_crc0:
+                ran.add('run_jellyfish')
+                for _p in _jp: votes[_p]+=1
+                accepted=set(_jp)
+                trace.append(('(entity-repair escalate)','recipcov',f'committed recipcov {_crc0:.3f} < cov {_cc0:.2f}; matcher recipcov {_jrc:.3f} -> commit jellyfish'))
+        # (b) over-merge veto: drop a committed (s,t) iff target t is over-merged (>=2 committed
+        #     sources) AND (s,t) is NOT co-signed by another specialist AND a sibling source for t
+        #     IS co-signed. On 1-to-1 transforms no target has >=2 sources -> never fires.
+        if os.environ.get('EM_VETO','1')=='1' and len([_t for _t in ran if _t.startswith('run_')])>=2 and accepted:
+            _tdb=_Cf(b for _,b in accepted); _cosigned={}
+            for (a,b) in accepted:
+                if votes.get((a,b),0)>=2: _cosigned.setdefault(b,set()).add(a)
+            _drop={(a,b) for (a,b) in accepted if _tdb[b]>=2 and votes.get((a,b),0)<2 and _cosigned.get(b)}
+            if _drop:
+                accepted=accepted-_drop
+                trace.append(('(entity-repair veto)','over-merge',f'dropped {len(_drop)} non-co-signed over-merge pairs'))
     f1=A.score_rows(accepted,name,s,t,sc,tc,truth)
     # precision/recall (for failure analysis): map accepted value-pairs -> row-pairs vs truth
     s2r={}; [s2r.setdefault(_nrm(v),[]).append(i) for i,v in enumerate(s[sc])]

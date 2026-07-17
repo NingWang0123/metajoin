@@ -29,8 +29,9 @@ at the repo root.
    released default is the **signal-only policy**: it runs deterministically
    with no endpoint, omitting the two LLM-based steps. Enabling the LLM mode
    (off by default here) adds a **content probe** (re-reads raw values when the
-   column signals are ambiguous) and an **acceptance judge** (on the
-   non-transform classes) — the steps that recover the hardest cases. Signals
+   column signals are ambiguous) and **pair-judged repair** (arbitration between
+   disagreeing specialists, plus entity-side reciprocity escalation with an
+   over-merge veto) — the steps that recover the hardest cases. Signals
    alone and an LLM alone each fall short; this combination is the full MetaJoin.
 
 A shared embedding helper (`_embed.py`, MiniLM via sentence-transformers) backs
@@ -92,5 +93,5 @@ repo root to `sys.path` for you).
 The released router defaults to the signal-only policy for zero-dependency
 runnability. Enabling the LLM mode (`METAJOIN_LLM=1` + an OpenAI-compatible
 endpoint via `VLLM_ENDPOINT`/`CTRL_ENDPOINT`) turns on the content probe and the
-acceptance judge — the full MetaJoin. Routing stays signal-driven in both modes;
+pair-judged repair — the full MetaJoin. Routing stays signal-driven in both modes;
 with no endpoint those two steps are skipped and the router runs deterministically.
